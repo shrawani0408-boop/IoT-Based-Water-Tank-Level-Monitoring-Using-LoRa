@@ -1,0 +1,53 @@
+Output
+Received packet: 1,1862,52.5
+------ TANK DETAILS ------
+Tank ID: 1
+Raw Sensor Value: 1862
+Water Level: 52.5%
+Signal Strength (RSSI): -67 dBm
+--------------------------
+------ ALL TANK LEVELS ------
+Tank 1: 52.5%
+Tank 2: Waiting...
+Tank 3: Waiting...
+Tank 4: Waiting...
+-----------------------------
+Received packet: 2,2140,68.4
+------ TANK DETAILS ------
+Tank ID: 2
+Raw Sensor Value: 2140
+Water Level: 68.4%
+Signal Strength (RSSI): -71 dBm
+--------------------------
+------ ALL TANK LEVELS ------
+Tank 1: 52.5%
+Tank 2: 68.4%
+Tank 3: Waiting...
+Tank 4: Waiting...
+-----------------------------
+Received packet: 3,1650,40.6
+------ TANK DETAILS ------
+Tank ID: 3
+Raw Sensor Value: 1650
+Water Level: 40.6%
+Signal Strength (RSSI): -65 dBm
+--------------------------
+------ ALL TANK LEVELS ------
+Tank 1: 52.5%
+Tank 2: 68.4%
+Tank 3: 40.6%
+Tank 4: Waiting...
+-----------------------------
+Received packet: 4,2480,86.0
+------ TANK DETAILS ------
+Tank ID: 4
+Raw Sensor Value: 2480
+Water Level: 86.0%
+Signal Strength (RSSI): -69 dBm
+--------------------------
+------ ALL TANK LEVELS ------
+Tank 1: 52.5%
+Tank 2: 68.4%
+Tank 3: 40.6%
+Tank 4: 86.0%
+-----------------------------

@@ -1,0 +1,318 @@
+1. Transmitter Code
+
+#include <SPI.h>
+#include <LoRa.h>
+
+// Change this ID for each transmitter: 1, 2, 3, or 4
+#define TANK_ID 1
+
+// LoRa pins
+#define LORA_SCK   18
+#define LORA_MISO  19
+#define LORA_MOSI  23
+#define LORA_SS    5
+#define LORA_RST   14
+#define LORA_DIO0  26
+#define LORA_FREQ  433E6
+
+// Analog pressure sensor
+#define PRESSURE_PIN 34
+
+// Replace with actual readings from your sensor
+const int EMPTY_RAW = 1000;
+const int FULL_RAW = 3000;
+
+const unsigned long SEND_INTERVAL = 8000;
+
+unsigned long lastSend = 0;
+bool firstSend = true;
+
+// Read and average 10 ADC samples
+int readPressureSensor() {
+    long total = 0;
+
+    for (int i = 0; i < 10; i++) {
+        total += analogRead(PRESSURE_PIN);
+        delay(10);
+    }
+
+    return total / 10;
+}
+
+// Convert raw ADC reading to percentage
+float calculateLevel(int rawValue) {
+    if (EMPTY_RAW == FULL_RAW) {
+        return 0.0;
+    }
+
+    float level =
+        ((float)(rawValue - EMPTY_RAW) /
+         (float)(FULL_RAW - EMPTY_RAW)) * 100.0;
+
+    if (level < 0.0) level = 0.0;
+    if (level > 100.0) level = 100.0;
+
+    return level;
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    pinMode(PRESSURE_PIN, INPUT);
+
+    analogReadResolution(12);
+    analogSetPinAttenuation(PRESSURE_PIN, ADC_11db);
+
+    Serial.println();
+    Serial.println("Water Tank LoRa Transmitter");
+    Serial.print("Tank ID: ");
+    Serial.println(TANK_ID);
+
+    SPI.begin(
+        LORA_SCK,
+        LORA_MISO,
+        LORA_MOSI,
+        LORA_SS
+    );
+
+    LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+
+    if (!LoRa.begin(LORA_FREQ)) {
+        Serial.println("ERROR: LoRa initialization failed!");
+
+        while (true) {
+            delay(1000);
+        }
+    }
+
+    // Must match receiver settings
+    LoRa.enableCrc();
+
+    Serial.println("LoRa initialized successfully.");
+    Serial.println("Transmitter ready.");
+}
+
+void loop() {
+    // Stagger startup to reduce packet collisions
+    if (firstSend) {
+        delay(TANK_ID * 1500UL);
+        firstSend = false;
+        lastSend = millis();
+    }
+
+    if (millis() - lastSend >= SEND_INTERVAL) {
+        lastSend = millis();
+
+        int rawValue = readPressureSensor();
+        float level = calculateLevel(rawValue);
+
+        // Packet format: TankID,RawValue,WaterLevel
+        String packet =
+            String(TANK_ID) + "," +
+            String(rawValue) + "," +
+            String(level, 1);
+
+        LoRa.beginPacket();
+        LoRa.print(packet);
+
+        int result = LoRa.endPacket();
+
+        Serial.println("--------------------------");
+
+        Serial.print("Tank ID: ");
+        Serial.println(TANK_ID);
+
+        Serial.print("Raw Sensor Value: ");
+        Serial.println(rawValue);
+
+        Serial.print("Water Level: ");
+        Serial.print(level, 1);
+        Serial.println("%");
+
+        if (result == 1) {
+            Serial.print("Transmitted Packet: ");
+            Serial.println(packet);
+        } else {
+            Serial.println("ERROR: Packet transmission failed!");
+        }
+
+        Serial.println("--------------------------");
+    }
+}
+
+
+2. Receiver Code
+
+#include <SPI.h>
+#include <LoRa.h>
+
+// LoRa connections to ESP32
+#define LORA_SCK   18
+#define LORA_MISO  19
+#define LORA_MOSI  23
+#define LORA_SS    5
+#define LORA_RST   14
+#define LORA_DIO0  26
+#define LORA_FREQ  433E6
+
+const int NUM_TANKS = 4;
+const unsigned long TIMEOUT_MS = 12000;
+
+// Index 0 = Tank 1, index 1 = Tank 2, etc.
+unsigned long lastReceived[NUM_TANKS] = {0};
+
+bool tankReceived[NUM_TANKS] = {false};
+bool timeoutReported[NUM_TANKS] = {false};
+
+String tankData[NUM_TANKS] = {
+    "Waiting...",
+    "Waiting...",
+    "Waiting...",
+    "Waiting..."
+};
+
+void printTankStatus() {
+    Serial.println("\n------ ALL TANK LEVELS ------");
+
+    for (int i = 0; i < NUM_TANKS; i++) {
+        Serial.print("Tank ");
+        Serial.print(i + 1);
+        Serial.print(": ");
+        Serial.println(tankData[i]);
+    }
+
+    Serial.println("-----------------------------");
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    Serial.println();
+    Serial.println("Four-Tank LoRa Receiver Starting...");
+
+    SPI.begin(
+        LORA_SCK,
+        LORA_MISO,
+        LORA_MOSI,
+        LORA_SS
+    );
+
+    LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+
+    if (!LoRa.begin(LORA_FREQ)) {
+        Serial.println("ERROR: LoRa initialization failed!");
+        Serial.println("Check wiring and power.");
+
+        while (true) {
+            delay(1000);
+        }
+    }
+
+    // Must match all transmitters
+    LoRa.enableCrc();
+
+    Serial.println("LoRa initialization successful!");
+    Serial.println("Waiting for packets from 4 tanks...");
+
+    printTankStatus();
+}
+
+void loop() {
+    int packetSize = LoRa.parsePacket();
+
+    if (packetSize > 0) {
+        String packet = "";
+
+        while (LoRa.available()) {
+            packet += (char)LoRa.read();
+        }
+
+        Serial.print("\nReceived packet: ");
+        Serial.println(packet);
+
+        int firstComma = packet.indexOf(',');
+        int secondComma =
+            packet.indexOf(',', firstComma + 1);
+
+        if (firstComma <= 0 ||
+            secondComma <= firstComma ||
+            secondComma >= packet.length() - 1) {
+
+            Serial.println("ERROR: Invalid packet format");
+
+        } else {
+            int tankID =
+                packet.substring(0, firstComma).toInt();
+
+            long rawValue =
+                packet.substring(
+                    firstComma + 1,
+                    secondComma
+                ).toInt();
+
+            float level =
+                packet.substring(
+                    secondComma + 1
+                ).toFloat();
+
+            if (tankID < 1 || tankID > NUM_TANKS) {
+                Serial.println("ERROR: Unknown Tank ID");
+
+            } else {
+                int index = tankID - 1;
+
+                // Update the corresponding tank
+                tankReceived[index] = true;
+                timeoutReported[index] = false;
+                lastReceived[index] = millis();
+
+                tankData[index] =
+                    String(level, 1) + "%";
+
+                Serial.println("------ TANK DETAILS ------");
+
+                Serial.print("Tank ID: ");
+                Serial.println(tankID);
+
+                Serial.print("Raw Sensor Value: ");
+                Serial.println(rawValue);
+
+                Serial.print("Water Level: ");
+                Serial.print(level, 1);
+                Serial.println("%");
+
+                Serial.print("Signal Strength (RSSI): ");
+                Serial.print(LoRa.packetRssi());
+                Serial.println(" dBm");
+
+                Serial.println("--------------------------");
+
+                printTankStatus();
+            }
+        }
+    }
+
+    // Detect missing transmitter packets
+    unsigned long now = millis();
+
+    for (int i = 0; i < NUM_TANKS; i++) {
+        if (tankReceived[i] &&
+            now - lastReceived[i] > TIMEOUT_MS) {
+
+            tankReceived[i] = false;
+            tankData[i] = "Timeout";
+
+            if (!timeoutReported[i]) {
+                Serial.print("WARNING: Tank ");
+                Serial.print(i + 1);
+                Serial.println(" data timeout!");
+
+                timeoutReported[i] = true;
+
+                printTankStatus();
+            }
+        }
+    }
+}
